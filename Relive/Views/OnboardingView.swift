@@ -3,6 +3,8 @@ import SwiftUI
 struct OnboardingView: View {
     @Environment(TripStore.self) private var store
     @State private var name = ""
+    @State private var signingIn = false
+    @State private var problem: String?
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -34,21 +36,32 @@ struct OnboardingView: View {
                     .onSubmit { start() }
                 Rectangle()
                     .frame(height: 1.5)
-                Text("It's printed on every trip receipt you share.")
-                    .font(.footnote)
-                    .opacity(0.7)
+                if let problem {
+                    Text(problem)
+                        .font(.footnote.weight(.semibold))
+                } else {
+                    Text("It's printed on every trip receipt you share.")
+                        .font(.footnote)
+                        .opacity(0.7)
+                }
                 Button {
                     start()
                 } label: {
-                    Text("Start")
-                        .font(.headline)
-                        .foregroundStyle(Theme.thermal)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Theme.ink, in: Capsule())
+                    Group {
+                        if signingIn {
+                            ProgressView().tint(Theme.thermal)
+                        } else {
+                            Text("Start")
+                        }
+                    }
+                    .font(.headline)
+                    .foregroundStyle(Theme.thermal)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Theme.ink, in: Capsule())
                 }
                 .opacity(trimmedName.isEmpty ? 0.35 : 1)
-                .disabled(trimmedName.isEmpty)
+                .disabled(trimmedName.isEmpty || signingIn)
                 .padding(.top, 10)
             }
             .foregroundStyle(Theme.ink)
@@ -66,7 +79,18 @@ struct OnboardingView: View {
     }
 
     private func start() {
-        guard !trimmedName.isEmpty else { return }
-        store.signIn(name: trimmedName)
+        guard !trimmedName.isEmpty, !signingIn else { return }
+        signingIn = true
+        problem = nil
+        Task {
+            do {
+                try await store.signIn(name: trimmedName)
+            } catch {
+                problem = error is URLError
+                    ? "Couldn't reach the server. Check your connection and try again."
+                    : error.localizedDescription
+            }
+            signingIn = false
+        }
     }
 }

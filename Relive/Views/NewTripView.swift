@@ -10,6 +10,8 @@ struct NewTripView: View {
     @State private var end = Date().addingTimeInterval(2 * 24 * 60 * 60)
     @State private var places: [Place] = []
     @State private var searching = false
+    @State private var creating = false
+    @State private var problem: String?
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -32,9 +34,14 @@ struct NewTripView: View {
                 } header: {
                     Text("Where")
                 } footer: {
-                    Text("Photos taken on these dates within 50 km of any place here are suggested for the album.")
+                    if let problem {
+                        Text(problem).foregroundStyle(.red)
+                    } else {
+                        Text("Photos taken on these dates within 50 km of any place here are suggested for the album.")
+                    }
                 }
             }
+            .disabled(creating)
             .navigationTitle("New trip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -42,8 +49,12 @@ struct NewTripView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") { create() }
-                        .disabled(trimmedName.isEmpty || places.isEmpty)
+                    if creating {
+                        ProgressView()
+                    } else {
+                        Button("Create") { create() }
+                            .disabled(trimmedName.isEmpty || places.isEmpty)
+                    }
                 }
             }
             .onChange(of: start) { _, newStart in
@@ -56,11 +67,23 @@ struct NewTripView: View {
     }
 
     private func create() {
-        guard let trip = store.createTrip(name: trimmedName, startDate: start, endDate: end, places: places) else {
-            return
+        guard !creating else { return }
+        creating = true
+        problem = nil
+        Task {
+            defer { creating = false }
+            do {
+                guard let trip = try await store.createTrip(
+                    name: trimmedName, startDate: start, endDate: end, places: places
+                ) else { return }
+                dismiss()
+                onCreate(trip)
+            } catch {
+                problem = error is URLError
+                    ? "Couldn't reach the server. Check your connection and try again."
+                    : error.localizedDescription
+            }
         }
-        dismiss()
-        onCreate(trip)
     }
 }
 

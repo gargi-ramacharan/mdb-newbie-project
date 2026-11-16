@@ -27,6 +27,8 @@ struct Place: Codable, Identifiable, Hashable, Sendable {
 enum PhotoRef: Codable, Hashable, Sendable {
     /// `PHAsset.localIdentifier` in this phone's camera roll.
     case asset(String)
+    /// A friend's photo, stored in the shared album. The value is its path in the photo bucket.
+    case remote(String)
     /// A drawn stand-in used by the seeded demo trip.
     case placeholder(symbol: String, hue: Double)
 }
@@ -38,8 +40,17 @@ struct TripPhoto: Codable, Identifiable, Hashable, Sendable {
     var latitude: Double?
     var longitude: Double?
     var ref: PhotoRef
+    /// Where this photo lives in the shared album once it has uploaded. `nil` means it is
+    /// only on this phone so far. Optional so trips saved before sync existed still load.
+    var remotePath: String?
 
     var hasLocation: Bool { latitude != nil && longitude != nil }
+
+    /// Yours, reviewed, and still waiting to upload to the shared album.
+    func needsUpload(by me: UUID) -> Bool {
+        guard ownerID == me, remotePath == nil, case .asset = ref else { return false }
+        return true
+    }
 }
 
 struct Trip: Codable, Identifiable, Hashable, Sendable {

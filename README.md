@@ -25,16 +25,47 @@ change the bundle identifier from `com.relive.app` to one of your own.
   spot furthest from the first stop) and spot-to-spot distance, on a receipt card you can share
   as an image.
 
-## What's simulated
+## Backend (Supabase)
 
-Everything is stored on this phone (`Application Support/relive.json`); nothing is uploaded.
+The app talks to Supabase over plain HTTPS (`Relive/Backend`, no packages to install). Until you
+point it at a project it runs exactly as the original prototype: everything stays on the phone.
+
+One person sets up the project, everyone else just pulls the repo:
+
+1. Create a project at supabase.com. In **Authentication > Providers**, turn on **Anonymous sign-ins**.
+   (There are no passwords: the name you type at launch is your account, and the session lives in the Keychain.)
+2. In the **SQL Editor**, run `supabase/migrations/0001_init.sql`. It creates the tables, the
+   `create_trip` / `join_trip` functions, the private `trip-photos` bucket, and the row-level
+   security that limits every trip's photos to its members.
+3. Copy **Project URL** and the **anon public key** (Settings > API) into `SupabaseURL` and
+   `SupabaseAnonKey` in `Info.plist`. The anon key is meant to ship inside the app; the policies
+   in step 2 are what protect the data.
+
+With that on:
+
+- **Trips and invites.** Creating a trip asks the server for its invite code. Joining with a code
+  or a `relive://join/CODE` link adds you as a member and pulls the album.
+- **Upload.** Reviewing photos queues them; each is re-encoded as a JPEG with a long edge of 1600 px
+  (never the original) and uploaded. Uploads retry on the next launch, trip open or tap on Retry,
+  and sending the same photo twice never duplicates it.
+- **Shared album.** Opening a trip, or coming back to the app, fetches everyone's new photos.
+  Friends' photos download on demand and are cached on the phone. There's no background
+  fetch: it all happens when the app is open.
+- A reinstall signs back into the same account (the Keychain survives), so the trips come back, and
+  camera-roll photos that are already in the album aren't suggested again.
+
+Trips made before a backend was configured exist only on that phone; they have no server copy and
+their invite codes won't work for friends.
+
+## What's simulated
 
 - The **Lisbon long weekend** demo trip is seeded on first launch. Its photos are drawn
   placeholders, and "your camera roll" for that trip is seeded too, so the review flow can be
-  demoed without real photos. Profile menu > Reset sample trip puts it back.
-- Joining only works for the sample code `KYOTO7`, because trips aren't synced between phones.
-  `TripRepository` in `Relive/Services/TripStore.swift` is the one place a real backend plugs in.
-- Trips you create use your real camera roll, but only your own photos can be in them.
+  demoed without real photos. It is never uploaded. Profile menu > Reset sample trip puts it back.
+- Without a backend, joining only works for the sample code `KYOTO7`, and trips are stored on
+  this phone (`Application Support/relive.json`). `TripRepository` in `Relive/Services/TripStore.swift`
+  is the local store; `TripBackend` in `Relive/Backend/TripBackend.swift` is the server seam.
+- The globe's five other trips (below) are made up and are never saved or uploaded.
 
 ## Look
 
@@ -58,8 +89,10 @@ card to delete a trip.
 ## Layout
 
 - `Relive/Core` — models, stop clustering, recap stats, seed data. No UI imports.
-- `Relive/Services` — storage, camera-roll scanning, reverse geocoding.
+- `Relive/Services` — local storage, camera-roll scanning, reverse geocoding, and `TripStore`, which ties them to the backend.
+- `Relive/Backend` — the Supabase client, its wire format, and the photo cache. Foundation only.
 - `Relive/Views` — the screens.
-- `Scripts/LogicCheck` — checks for the Core logic that run without Xcode:
+- `supabase/migrations` — the database schema and security policies.
+- `Scripts/LogicCheck` — checks for the Core and Backend logic (the Backend runs against a stubbed network) that run without Xcode:
 
-      swiftc Relive/Core/*.swift Scripts/LogicCheck/main.swift -o /tmp/relive-check && /tmp/relive-check
+      swiftc Relive/Core/*.swift Relive/Backend/*.swift Scripts/LogicCheck/main.swift -o /tmp/relive-check && /tmp/relive-check

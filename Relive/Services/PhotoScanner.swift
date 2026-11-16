@@ -64,11 +64,14 @@ enum PhotoScanner {
             if case .asset(let id) = photo.ref { pooled.insert(id) }
         }
 
+        let uploaded = AlreadyUploaded(trip: trip, owner: ownerID)
+
         var photos: [TripPhoto] = []
         PHAsset.fetchAssets(with: .image, options: options).enumerateObjects { asset, _, _ in
             guard !pooled.contains(asset.localIdentifier),
                   !asset.mediaSubtypes.contains(.photoScreenshot),
-                  let takenAt = asset.creationDate else { return }
+                  let takenAt = asset.creationDate,
+                  !uploaded.contains(takenAt) else { return }
             photos.append(TripPhoto(
                 ownerID: ownerID,
                 takenAt: takenAt,
@@ -78,6 +81,30 @@ enum PhotoScanner {
             ))
         }
         return photos
+    }
+
+    /// A JPEG of a camera-roll photo whose long edge is at most `maxSide` pixels. This is what
+    /// gets uploaded, never the original. `nil` if the photo is gone or can't be loaded.
+    static func jpegData(for localIdentifier: String, maxSide: CGFloat, quality: CGFloat = 0.8) async -> Data? {
+        guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject else {
+            return nil
+        }
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.resizeMode = .exact
+        // Photos kept in iCloud are downloaded for the upload.
+        options.isNetworkAccessAllowed = true
+        let image: UIImage? = await withCheckedContinuation { continuation in
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: maxSide, height: maxSide),
+                contentMode: .aspectFit,
+                options: options
+            ) { image, _ in
+                continuation.resume(returning: image)
+            }
+        }
+        return image?.jpegData(compressionQuality: quality)
     }
 
     /// Loads a camera-roll photo scaled to roughly `side` pixels.

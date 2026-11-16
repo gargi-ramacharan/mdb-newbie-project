@@ -112,6 +112,8 @@ struct PhotoTile: View {
                 switch photo.ref {
                 case .asset(let id):
                     AssetImage(localIdentifier: id, side: loadSide)
+                case .remote(let path):
+                    RemoteImage(path: path, side: loadSide)
                 case .placeholder(let symbol, _):
                     PlaceholderPhoto(symbol: symbol, paper: paper)
                 }
@@ -136,6 +138,34 @@ struct AssetImage: View {
         }
         .task(id: localIdentifier) {
             image = await PhotoScanner.image(for: localIdentifier, side: side)
+        }
+    }
+}
+
+/// A photo from the shared album, downloaded on demand and cached on this phone.
+struct RemoteImage: View {
+    let path: String
+    let side: CGFloat
+    @Environment(TripStore.self) private var store
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Color(.secondarySystemBackground)
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ProgressView()
+            }
+        }
+        .task(id: path) {
+            guard let data = await store.albumPhoto(path: path), let full = UIImage(data: data) else { return }
+            // Decode at the size it is shown, so a grid of 1600 px photos stays light.
+            let scale = min(1, side / max(full.size.width, full.size.height))
+            let target = CGSize(width: full.size.width * scale, height: full.size.height * scale)
+            image = await full.byPreparingThumbnail(ofSize: target) ?? full
         }
     }
 }

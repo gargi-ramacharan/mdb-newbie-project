@@ -64,6 +64,11 @@ struct TripDetailView: View {
                 access = PhotoScanner.status
                 scan = await PhotoScanner.scan(trip: trip, me: me)
             }
+            // Friends' latest photos, whenever the trip opens or the app comes back.
+            .task(id: scenePhase) {
+                guard scenePhase == .active, sharer == nil else { return }
+                await store.refresh(tripID: trip.id)
+            }
             .task(id: stops.map(\.nameKey)) {
                 await store.resolveNames(for: stops)
             }
@@ -80,7 +85,23 @@ struct TripDetailView: View {
 
     @ViewBuilder
     private func notice(for trip: Trip, newCount: Int) -> some View {
-        if newCount > 0 {
+        let waiting = store.pendingUploads(in: trip.id)
+        if waiting > 0 && store.uploading > 0 {
+            NoticeSlip(
+                text: waiting == 1
+                    ? "Uploading 1 photo to the shared album…"
+                    : "Uploading \(waiting) photos to the shared album…",
+                action: nil
+            ) {}
+        } else if waiting > 0 {
+            NoticeSlip(
+                text: store.syncProblem
+                    ?? (waiting == 1
+                        ? "1 photo hasn't reached the shared album yet."
+                        : "\(waiting) photos haven't reached the shared album yet."),
+                action: "Retry"
+            ) { Task { await store.uploadPending() } }
+        } else if newCount > 0 {
             NoticeSlip(
                 text: newCount == 1
                     ? "1 new photo of yours matches this trip."
@@ -127,7 +148,8 @@ struct TripDetailView: View {
 /// A full-width canary slip for the one thing that needs your attention on a trip.
 private struct NoticeSlip: View {
     let text: String
-    let action: String
+    /// The button's label. `nil` shows the slip with no button, for something that is just in progress.
+    let action: String?
     var perform: () -> Void
 
     var body: some View {
@@ -136,17 +158,21 @@ private struct NoticeSlip: View {
                 .font(.subheadline.weight(.medium))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
-            Button {
-                perform()
-            } label: {
-                Text(action)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(Theme.thermal)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 9)
-                    .background(Theme.ink, in: Capsule())
+            if let action {
+                Button {
+                    perform()
+                } label: {
+                    Text(action)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Theme.thermal)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(Theme.ink, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            } else {
+                ProgressView()
             }
-            .buttonStyle(.plain)
         }
         .foregroundStyle(Theme.ink)
         .padding(.horizontal)
