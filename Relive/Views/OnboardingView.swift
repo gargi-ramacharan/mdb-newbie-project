@@ -1,8 +1,13 @@
 import SwiftUI
+import AuthenticationServices
 
 struct OnboardingView: View {
     @Environment(TripStore.self) private var store
     @State private var name = ""
+    @State private var signingIn = false
+    @State private var problem: String?
+    /// The nonce for the Apple request in flight.
+    @State private var nonce = AppleSignIn.makeNonce()
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -33,22 +38,27 @@ struct OnboardingView: View {
                     .onSubmit { start() }
                 Rectangle()
                     .frame(height: 1.5)
-                Text("It's printed on every trip receipt you share.")
-                    .font(.footnote)
-                    .opacity(0.7)
-                Button {
-                    start()
-                } label: {
-                    Text("Start")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Theme.ink, in: Capsule())
+                if let problem {
+                    Text(problem)
+                        .font(.footnote.weight(.semibold))
+                } else {
+                    Text(store.hasBackend
+                         ? "Shown to friends on your trips. Leave it blank to use the name on your Apple account."
+                         : "It's printed on every trip receipt you share.")
+                        .font(.footnote)
+                        .opacity(0.7)
                 }
-                .opacity(trimmedName.isEmpty ? 0.35 : 1)
-                .disabled(trimmedName.isEmpty)
-                .padding(.top, 10)
+                if store.hasBackend {
+                    appleButton
+                    Button("Continue without an account") { start() }
+                        .font(.subheadline.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 4)
+                        .opacity(trimmedName.isEmpty ? 0.35 : 1)
+                        .disabled(trimmedName.isEmpty || signingIn)
+                } else {
+                    startButton
+                }
             }
             .foregroundStyle(Theme.ink)
             .tint(Theme.ink)
@@ -64,8 +74,78 @@ struct OnboardingView: View {
         .background(Theme.ink.ignoresSafeArea())
     }
 
+    /// Sign in with Apple: one tap, works on every device, and shares only a name.
+    private var appleButton: some View {
+        SignInWithAppleButton(.continue) { request in
+            nonce = AppleSignIn.makeNonce()
+            AppleSignIn.configure(request, nonce: nonce)
+        } onCompletion: { result in
+            switch result {
+            case .success(let authorization):
+                Task { await finishApple(authorization) }
+            case .failure(let error):
+                if !AppleSignIn.wasCancelled(error) { problem = error.localizedDescription }
+            }
+        }
+        .signInWithAppleButtonStyle(.black)
+        .frame(height: 54)
+        .clipShape(Capsule())
+        .disabled(signingIn)
+        .overlay { if signingIn { ProgressView() } }
+        .padding(.top, 10)
+    }
+
+    private var startButton: some View {
+                Button {
+                    start()
+                } label: {
+                    Group {
+                        if signingIn {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text("Start")
+                        }
+                    }
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Theme.ink, in: Capsule())
+                }
+                .opacity(trimmedName.isEmpty ? 0.35 : 1)
+                .disabled(trimmedName.isEmpty || signingIn)
+                .padding(.top, 10)
+    }
+
+    private func finishApple(_ authorization: ASAuthorization) async {
+        signingIn = true
+        problem = nil
+        defer { signingIn = false }
+        do {
+            let credential = try AppleSignIn.credential(from: authorization, nonce: nonce)
+            // A name typed here wins over the one Apple shares.
+            let chosen = trimmedName.isEmpty ? credential.name : trimmedName
+            try await store.signInWithApple(idToken: credential.idToken, nonce: credential.nonce, name: chosen)
+        } catch {
+            problem = error is URLError
+                ? "Couldn't reach the server. Check your connection and try again."
+                : error.localizedDescription
+        }
+    }
+
     private func start() {
-        guard !trimmedName.isEmpty else { return }
-        store.signIn(name: trimmedName)
+        guard !trimmedName.isEmpty, !signingIn else { return }
+        signingIn = true
+        problem = nil
+        Task {
+            do {
+                try await store.signIn(name: trimmedName)
+            } catch {
+                problem = error is URLError
+                    ? "Couldn't reach the server. Check your connection and try again."
+                    : error.localizedDescription
+            }
+            signingIn = false
+        }
     }
 }

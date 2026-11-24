@@ -34,8 +34,11 @@ struct EditTripView: View {
     @State private var removing: Member?
     @State private var confirmingLeave = false
     @State private var confirmingDelete = false
-    /// Set when Save was tapped, so a new upload isn't cleaned up as abandoned.
+    /// Set once Save went through, so a new upload isn't cleaned up as abandoned.
     @State private var saved = false
+    @State private var saving = false
+    /// Keeps a cover someone uploaded on another phone (it's only in the shared album).
+    @State private var keepRemoteCover: Bool
 
     init(trip: Trip, onExit: @escaping (Exit) -> Void) {
         self.trip = trip
@@ -48,6 +51,7 @@ struct EditTripView: View {
         _coverPhotoID = State(initialValue: trip.chosenCover?.id)
         _coverImageFile = State(initialValue: trip.coverImageFile)
         _uploadedFile = State(initialValue: trip.coverImageFile)
+        _keepRemoteCover = State(initialValue: trip.coverPath != nil && trip.coverImageFile == nil)
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -66,6 +70,7 @@ struct EditTripView: View {
         if canEdit {
             preview.coverPhotoID = coverPhotoID
             preview.coverImageFile = coverImageFile
+            if !keepRemoteCover { preview.coverPath = nil }
         }
         return preview
     }
@@ -91,9 +96,13 @@ struct EditTripView: View {
                         Button("Cancel") { dismiss() }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") { save() }
-                            .fontWeight(.semibold)
-                            .disabled(trimmedName.isEmpty || places.isEmpty || loadingCover)
+                        if saving {
+                            ProgressView()
+                        } else {
+                            Button("Save") { save() }
+                                .fontWeight(.semibold)
+                                .disabled(trimmedName.isEmpty || places.isEmpty || loadingCover)
+                        }
                     }
                 } else {
                     ToolbarItem(placement: .confirmationAction) {
@@ -109,6 +118,7 @@ struct EditTripView: View {
                 Task { await upload(item) }
             }
             .onDisappear(perform: discardUnusedUploads)
+            .actionProblemAlert()
             .sheet(isPresented: $searching) {
                 PlaceSearchView { places.append($0) }
             }
@@ -119,7 +129,7 @@ struct EditTripView: View {
                 presenting: removing
             ) { member in
                 Button("Remove \(member.firstName)", role: .destructive) {
-                    store.removeMember(member.id, from: trip.id)
+                    Task { await store.removeMember(member.id, from: trip.id) }
                 }
             } message: { member in
                 Text("\(member.firstName) and the photos they added will be taken off this trip.")
@@ -187,9 +197,24 @@ struct EditTripView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Upload a cover photo")
 
+                        if let path = trip.coverPath, trip.coverImageFile == nil {
+                            Button {
+                                keepRemoteCover = true
+                                coverImageFile = nil
+                                coverPhotoID = nil
+                            } label: {
+                                choiceTile(selected: keepRemoteCover) {
+                                    RemoteImage(path: path, side: 200)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Current cover")
+                        }
+
                         if let file = uploadedFile, let uploaded = CoverImages.load(file) {
                             Button {
                                 coverImageFile = file
+                                keepRemoteCover = false
                             } label: {
                                 choiceTile(selected: coverImageFile == file) {
                                     Image(uiImage: uploaded).resizable().scaledToFill()
@@ -202,8 +227,9 @@ struct EditTripView: View {
                         Button {
                             coverImageFile = nil
                             coverPhotoID = nil
+                            keepRemoteCover = false
                         } label: {
-                            choiceTile(selected: coverImageFile == nil && coverPhotoID == nil) {
+                            choiceTile(selected: coverImageFile == nil && coverPhotoID == nil && !keepRemoteCover) {
                                 VStack(spacing: 4) {
                                     Image(systemName: "sparkles")
                                     Text("Auto").font(.caption2.weight(.semibold))
@@ -219,6 +245,7 @@ struct EditTripView: View {
                             Button {
                                 coverImageFile = nil
                                 coverPhotoID = photo.id
+                                keepRemoteCover = false
                             } label: {
                                 choiceTile(selected: coverImageFile == nil && coverPhotoID == photo.id) {
                                     PhotoTile(photo: photo, paper: current.paper(for: photo))
@@ -266,6 +293,7 @@ struct EditTripView: View {
         uploads.append(file)
         uploadedFile = file
         coverImageFile = file
+        keepRemoteCover = false
     }
 
     /// Deletes this sheet's uploads that didn't end up as the saved cover.
@@ -354,7 +382,7 @@ struct EditTripView: View {
                     } else if isOwner {
                         Menu {
                             Button("Make owner", systemImage: "crown") {
-                                store.makeOwner(member.id, of: trip.id)
+                                Task { await store.makeOwner(member.id, of: trip.id) }
                             }
                             Button("Remove from trip", systemImage: "person.badge.minus", role: .destructive) {
                                 removing = member
@@ -402,17 +430,25 @@ struct EditTripView: View {
     }
 
     private func save() {
-        saved = true
-        store.updateTrip(
-            trip.id,
-            name: trimmedName,
-            startDate: start,
-            endDate: end,
-            places: places,
-            coverPhotoID: coverImageFile == nil ? coverPhotoID : nil,
-            coverImageFile: coverImageFile
-        )
-        dismiss()
+        guard !saving else { return }
+        saving = true
+        Task {
+            let ok = await store.updateTrip(
+                trip.id,
+                name: trimmedName,
+                startDate: start,
+                endDate: end,
+                places: places,
+                coverPhotoID: coverImageFile == nil && !keepRemoteCover ? coverPhotoID : nil,
+                coverImageFile: coverImageFile,
+                keepUploadedCover: keepRemoteCover
+            )
+            saving = false
+            if ok {
+                saved = true
+                dismiss()
+            }
+        }
     }
 
     private func exit(_ exit: Exit) {

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Sign in with Apple. Needs a paid Apple Developer account to run on a phone. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<!-- Opens https://<INVITE_LINK_HOST>/join/CODE links in the app. Set INVITE_LINK_HOST in
+	     the Relive target's build settings to the domain hosting the web/ folder. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:$(INVITE_LINK_HOST)</string>
+	</array>
+</dict>
+</plist>

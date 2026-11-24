@@ -128,6 +128,8 @@ struct PhotoTile: View {
                 switch photo.ref {
                 case .asset(let id):
                     AssetImage(localIdentifier: id, side: loadSide)
+                case .remote(let path):
+                    RemoteImage(path: path, side: loadSide)
                 case .placeholder(let symbol, _):
                     PlaceholderPhoto(symbol: symbol, paper: paper)
                 }
@@ -178,10 +180,43 @@ struct FullPhoto: View {
             .task(id: id) {
                 image = await PhotoScanner.image(for: id, side: 2400, contentMode: .aspectFit)
             }
+        case .remote(let path):
+            RemoteImage(path: path, side: 2400, fit: true)
         case .placeholder(let symbol, _):
             // The seeded stand-ins are drawn square.
             PlaceholderPhoto(symbol: symbol, paper: paper)
                 .aspectRatio(1, contentMode: .fit)
+        }
+    }
+}
+
+/// A photo from the shared album, downloaded on demand and cached on this phone.
+struct RemoteImage: View {
+    let path: String
+    let side: CGFloat
+    /// Fits the whole photo instead of filling the frame, for the photo viewer.
+    var fit = false
+    @Environment(TripStore.self) private var store
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            if !fit { Theme.card }
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: fit ? .fit : .fill)
+            } else {
+                ProgressView().tint(fit ? .white : nil)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: path) {
+            guard let data = await store.albumPhoto(path: path), let full = UIImage(data: data) else { return }
+            // Decode at the size it is shown, so a grid of 1600 px photos stays light.
+            let scale = min(1, side / max(full.size.width, full.size.height))
+            let target = CGSize(width: full.size.width * scale, height: full.size.height * scale)
+            image = await full.byPreparingThumbnail(ofSize: target) ?? full
         }
     }
 }
@@ -265,14 +300,17 @@ struct PhotoViewer: View {
             .onChange(of: currentID, initial: true) { _, _ in refreshSaveState() }
             .confirmationDialog("Remove this photo from the album?", isPresented: $confirmingRemove, titleVisibility: .visible) {
                 Button("Remove", role: .destructive) {
-                    if let current { store.removePhoto(current.id, from: trip.id) }
-                    dismiss()
+                    guard let current else { return }
+                    Task {
+                        if await store.removePhoto(current.id, from: trip.id) { dismiss() }
+                    }
                 }
             } message: {
                 Text("It stays in your own photo library and won't be suggested for this trip again.")
             }
         }
         .preferredColorScheme(.dark)
+        .actionProblemAlert()
     }
 
     private func infoBar(for photo: TripPhoto) -> some View {
@@ -316,7 +354,7 @@ struct PhotoViewer: View {
                 Task {
                     saveState = .saving
                     do {
-                        try await PhotoSaver.save(photo, paper: trip.paper(for: photo))
+                        try await PhotoSaver.save(photo, paper: trip.paper(for: photo), download: store.albumPhoto)
                         if currentID == photo.id { saveState = .saved }
                     } catch {
                         saveState = .failed(error.localizedDescription)
@@ -375,7 +413,25 @@ struct PhotoGrid<Badge: View>: View {
     }
 }
 
+/// Shows the store's `actionProblem` (an owner or member action the server refused).
+private struct ActionProblemAlert: ViewModifier {
+    @Environment(TripStore.self) private var store
+
+    func body(content: Content) -> some View {
+        content.alert(
+            "That didn't go through",
+            isPresented: Binding(get: { store.actionProblem != nil }, set: { if !$0 { store.actionProblem = nil } })
+        ) {
+            Button("OK") { store.actionProblem = nil }
+        } message: {
+            Text(store.actionProblem ?? "")
+        }
+    }
+}
+
 extension View {
+    func actionProblemAlert() -> some View { modifier(ActionProblemAlert()) }
+
     /// A printed, offset shadow in solid ink, drawn behind `shape`.
     func hardShadow<S: Shape>(_ shape: S, offset: CGFloat = 4) -> some View {
         background(shape.fill(Theme.ink).offset(x: offset, y: offset))

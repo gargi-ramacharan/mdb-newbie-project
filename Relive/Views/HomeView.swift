@@ -114,7 +114,13 @@ struct HomeView: View {
         HStack {
             Menu {
                 if let me = store.me {
-                    Section("Signed in as \(me.name)") {
+                    Section(store.isSignedInWithApple ? "Signed in with Apple as \(me.name)" : "Signed in as \(me.name)") {
+                        if store.hasBackend && !store.isSignedInWithApple {
+                            // Keeps this account's trips and makes it work on your other devices.
+                            Button("Sign in with Apple", systemImage: "apple.logo") {
+                                Task { await linkApple() }
+                            }
+                        }
                         Button("Reset sample trip", systemImage: "arrow.counterclockwise") {
                             store.resetDemo()
                         }
@@ -181,9 +187,9 @@ struct HomeView: View {
             presenting: removing
         ) { trip in
             if store.isOwner(of: trip) {
-                Button("Delete for everyone", role: .destructive) { store.deleteTrip(trip.id) }
+                Button("Delete for everyone", role: .destructive) { Task { await store.deleteTrip(trip.id) } }
             } else {
-                Button("Leave trip", role: .destructive) { store.leaveTrip(trip.id) }
+                Button("Leave trip", role: .destructive) { Task { await store.leaveTrip(trip.id) } }
             }
         } message: { trip in
             Text(store.isOwner(of: trip)
@@ -221,6 +227,19 @@ struct HomeView: View {
         .hardShadow(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.trailing, 4)
         .padding(.bottom, 4)
+    }
+
+    /// Signs this account in with Apple from the profile menu.
+    private func linkApple() async {
+        do {
+            let credential = try await AppleSignIn.request()
+            try await store.signInWithApple(idToken: credential.idToken, nonce: credential.nonce, name: credential.name)
+        } catch {
+            guard !AppleSignIn.wasCancelled(error) else { return }
+            store.actionProblem = error is URLError
+                ? "Couldn't reach the server. Check your connection and try again."
+                : error.localizedDescription
+        }
     }
 
     /// Opens a trip that was just created or joined, and turns the globe to it for the way back.

@@ -16,13 +16,16 @@ enum PhotoSaver {
         }
     }
 
-    /// Saves a pooled photo at full size. A seeded stand-in is drawn out as an image.
+    /// Saves a pooled photo at full size. A friend's photo comes from the shared album via
+    /// `download`; a seeded stand-in is drawn out as an image.
     @MainActor
-    static func save(_ photo: TripPhoto, paper: Color) async throws {
+    static func save(_ photo: TripPhoto, paper: Color, download: (String) async -> Data?) async throws {
         let image: UIImage?
         switch photo.ref {
         case .asset(let id):
             image = await PhotoScanner.image(for: id, side: 4096, contentMode: .aspectFit)
+        case .remote(let path):
+            image = await download(path).flatMap(UIImage.init(data:))
         case .placeholder(let symbol, _):
             let renderer = ImageRenderer(
                 content: PlaceholderPhoto(symbol: symbol, paper: paper).frame(width: 400, height: 400)
@@ -125,6 +128,11 @@ enum CoverImages {
         }
         cache.setObject(resized, forKey: name as NSString)
         return name
+    }
+
+    /// The saved JPEG's bytes, for uploading.
+    static func data(_ name: String) -> Data? {
+        try? Data(contentsOf: directory.appendingPathComponent(name))
     }
 
     static func load(_ name: String) -> UIImage? {
