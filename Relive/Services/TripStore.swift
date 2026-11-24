@@ -55,8 +55,15 @@ final class TripStore {
         data.placeNames.merging(SeedData.sharedPlaceNames) { saved, _ in saved }
     }
 
-    /// Made-up trips other people have shared with you. View-only, and never saved.
-    let sharedTrips = SeedData.sharedTrips()
+    /// Made-up trips other people have shared with you. With no server to fetch them from,
+    /// they are rebuilt from seed data on every launch; only which ones you left is saved.
+    private let allSharedTrips = SeedData.sharedTrips()
+
+    /// Trips other people have shared with you that you haven't left. View-only.
+    var sharedTrips: [Trip] {
+        let left = data.leftSharedTrips ?? []
+        return allSharedTrips.filter { !left.contains($0.id) }
+    }
 
     /// Newest trip first.
     var trips: [Trip] { data.trips.sorted { $0.startDate > $1.startDate } }
@@ -67,7 +74,7 @@ final class TripStore {
 
     /// The person who shared this trip with you, or `nil` when it is one of your own.
     func sharer(of trip: Trip) -> Member? {
-        sharedTrips.contains { $0.id == trip.id } ? trip.members.first : nil
+        allSharedTrips.contains { $0.id == trip.id } ? trip.members.first : nil
     }
 
     /// First launch: create your profile and seed the demo trip.
@@ -79,11 +86,13 @@ final class TripStore {
         save()
     }
 
-    /// Puts the demo trip back to "your photos are waiting for review".
+    /// Puts the demo trip back to "your photos are waiting for review", and brings back
+    /// any shared trips you left.
     func resetDemo() {
         guard let me = data.me else { return }
         data.trips.removeAll(where: \.isDemo)
         data.trips.append(SeedData.demoTrip(me: me))
+        data.leftSharedTrips = nil
         save()
     }
 
@@ -96,7 +105,8 @@ final class TripStore {
             endDate: endDate,
             places: places,
             members: [me],
-            inviteCode: Self.newInviteCode()
+            inviteCode: newInviteCode(),
+            ownerID: me.id
         )
         // The dates were picked as calendar days on this phone. Pin them to the same
         // calendar days at the destination.
@@ -130,9 +140,96 @@ final class TripStore {
         save()
     }
 
+    /// Takes one of your photos out of a trip's album. It isn't suggested again.
+    func removePhoto(_ photoID: UUID, from tripID: UUID) {
+        guard let me = data.me,
+              let index = data.trips.firstIndex(where: { $0.id == tripID }),
+              let photo = data.trips[index].photos.first(where: { $0.id == photoID }),
+              photo.ownerID == me.id else { return }
+        data.trips[index].photos.removeAll { $0.id == photoID }
+        data.trips[index].skipped.insert(photo.ref)
+        if data.trips[index].coverPhotoID == photoID {
+            data.trips[index].coverPhotoID = nil
+        }
+        save()
+    }
+
+    /// True when you run this trip and can manage its members or delete it.
+    func isOwner(of trip: Trip) -> Bool {
+        guard let me = data.me else { return false }
+        return trip.isOwner(me.id)
+    }
+
+    /// Owner only: saves changes to a trip's name, dates, places and cover. Dates are
+    /// calendar days as picked on this phone, like `createTrip`.
+    func updateTrip(
+        _ id: UUID, name: String, startDate: Date, endDate: Date, places: [Place],
+        coverPhotoID: UUID?, coverImageFile: String?
+    ) {
+        guard let index = data.trips.firstIndex(where: { $0.id == id }),
+              isOwner(of: data.trips[index]) else { return }
+        var trip = data.trips[index]
+        trip.name = name
+        trip.places = places
+        trip.coverPhotoID = coverPhotoID
+        if let old = trip.coverImageFile, old != coverImageFile {
+            CoverImages.delete(old)
+        }
+        trip.coverImageFile = coverImageFile
+        // The places decide the trip's time zone, so pin the days after they are set.
+        trip.startDate = Self.sameDay(startDate, in: trip.calendar)
+        trip.endDate = Self.sameDay(max(endDate, startDate), in: trip.calendar)
+        data.trips[index] = trip
+        save()
+    }
+
+    /// Owner only: takes a member off the trip, with the photos they added.
+    func removeMember(_ memberID: UUID, from tripID: UUID) {
+        guard let index = data.trips.firstIndex(where: { $0.id == tripID }),
+              isOwner(of: data.trips[index]) else { return }
+        data.trips[index].removeMember(memberID)
+        save()
+    }
+
+    /// Owner only: hands the trip to another member.
+    func makeOwner(_ memberID: UUID, of tripID: UUID) {
+        guard let index = data.trips.firstIndex(where: { $0.id == tripID }),
+              isOwner(of: data.trips[index]) else { return }
+        data.trips[index].makeOwner(memberID)
+        save()
+    }
+
+    /// Takes you off a trip you don't own, or hides a trip someone shared with you. It
+    /// disappears from this phone along with any photos you added; an owner has to hand
+    /// the trip on first, or delete it.
+    func leaveTrip(_ id: UUID) {
+        if let trip = data.trips.first(where: { $0.id == id }) {
+            guard !isOwner(of: trip) else { return }
+            // Nothing syncs yet, so leaving only drops this phone's copy. With a server this
+            // would call `trip.removeMember(me.id)` there instead.
+            data.trips.removeAll { $0.id == id }
+        } else if allSharedTrips.contains(where: { $0.id == id }) {
+            data.leftSharedTrips = (data.leftSharedTrips ?? []).union([id])
+        } else {
+            return
+        }
+        save()
+    }
+
+    /// Owner only: deletes the trip for everyone on it.
     func deleteTrip(_ id: UUID) {
+        guard let trip = data.trips.first(where: { $0.id == id }), isOwner(of: trip) else { return }
+        if let file = trip.coverImageFile { CoverImages.delete(file) }
         data.trips.removeAll { $0.id == id }
         save()
+    }
+
+    /// Noon on `date`'s calendar day at the trip's destination, as a date on this phone's
+    /// calendar with the same year, month and day. The reverse of `sameDay`, for date pickers.
+    static func localDay(_ date: Date, from calendar: Calendar) -> Date {
+        var parts = calendar.dateComponents([.year, .month, .day], from: date)
+        parts.hour = 12
+        return Calendar.current.date(from: parts) ?? date
     }
 
     /// Reverse-geocodes any stop that has no cached name yet, one at a time.
@@ -157,8 +254,17 @@ final class TripStore {
         return calendar.date(from: parts) ?? date
     }
 
-    private static func newInviteCode() -> String {
-        let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
-        return String((0..<6).map { _ in alphabet.randomElement()! })
+    /// A six-character code no trip on this phone, or in the seeded "server", already uses.
+    /// 32^6 is about a billion codes, so a clash is rare, but it is checked anyway. Codes are
+    /// only unique per phone until trips sync; a server would enforce it with a unique column.
+    private func newInviteCode() -> String {
+        let taken = Set(data.trips.map(\.inviteCode))
+            .union(SeedData.joinableTrips().map(\.inviteCode))
+            .union([SeedData.demoInviteCode])
+        var code: String
+        repeat {
+            code = InviteCode.random()
+        } while taken.contains(code)
+        return code
     }
 }

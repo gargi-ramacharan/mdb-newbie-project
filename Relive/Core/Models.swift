@@ -56,6 +56,34 @@ struct Trip: Codable, Identifiable, Hashable, Sendable {
     /// Camera-roll photos you reviewed and chose not to add. They aren't suggested again.
     var skipped: Set<PhotoRef> = []
     var isDemo = false
+    /// Who runs the trip: only they can remove members or delete it for everyone.
+    /// `nil` in trips saved before owners existed; the first member is the owner then.
+    var ownerID: UUID?
+    /// An album photo picked as the cover. `nil` picks one automatically.
+    var coverPhotoID: UUID?
+    /// File name of a cover photo the owner uploaded. Wins over `coverPhotoID`.
+    var coverImageFile: String?
+
+    /// The owner's member id.
+    var ownerMemberID: UUID? { ownerID ?? members.first?.id }
+
+    func isOwner(_ memberID: UUID) -> Bool { ownerMemberID == memberID }
+
+    /// Takes someone off the trip, along with the photos they added. The owner can't be removed.
+    mutating func removeMember(_ memberID: UUID) {
+        guard !isOwner(memberID) else { return }
+        members.removeAll { $0.id == memberID }
+        photos.removeAll { $0.ownerID == memberID }
+        if let cover = coverPhotoID, !photos.contains(where: { $0.id == cover }) {
+            coverPhotoID = nil
+        }
+    }
+
+    /// Hands the trip to another member.
+    mutating func makeOwner(_ memberID: UUID) {
+        guard members.contains(where: { $0.id == memberID }) else { return }
+        ownerID = memberID
+    }
 
     /// A calendar in the time zone of the trip's first place, so "day 1" means day 1
     /// at the destination even when the photos are scanned back home.
@@ -103,6 +131,15 @@ struct Trip: Codable, Identifiable, Hashable, Sendable {
     var inviteURL: URL { URL(string: "relive://join/\(inviteCode)")! }
 }
 
+enum InviteCode {
+    /// No 0/O or 1/I, so codes read aloud or copied by hand don't get mixed up.
+    static let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+
+    static func random() -> String {
+        String((0..<6).map { _ in alphabet.randomElement()! })
+    }
+}
+
 /// A reverse-geocoded name for a spot on the map.
 struct PlaceName: Codable, Hashable, Sendable {
     var spot: String
@@ -115,4 +152,7 @@ struct AppData: Codable, Sendable {
     var trips: [Trip] = []
     /// Cache of reverse-geocoded names, keyed by `Geo.key`.
     var placeNames: [String: PlaceName] = [:]
+    /// Ids of trips other people shared with you that you left. Optional so files saved
+    /// before leaving existed still load.
+    var leftSharedTrips: Set<UUID>?
 }

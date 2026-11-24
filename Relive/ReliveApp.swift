@@ -9,19 +9,22 @@ struct ReliveApp: App {
     @State private var store = TripStore()
 
     init() {
-        // Navigation titles use the same condensed face as the rest of the app's titles,
+        // Navigation titles in ink, semibold and set tight like the app's other titles,
         // in every bar state (at rest, scrolled, and compact).
-        if let large = UIFont(name: "DINCondensed-Bold", size: 46),
-           let inline = UIFont(name: "DINCondensed-Bold", size: 24) {
-            // DIN Condensed draws high in its line box, so nudge the inline title down.
-            let inlineAttributes: [NSAttributedString.Key: Any] = [.font: inline, .baselineOffset: -3]
+        do {
+            let large = UIFont.systemFont(ofSize: 34, weight: .semibold)
+            let inline = UIFont.systemFont(ofSize: 17, weight: .semibold)
+            let ink = UIColor(Theme.ink)
+            let inlineAttributes: [NSAttributedString.Key: Any] = [.font: inline, .foregroundColor: ink]
             let scrolled = UINavigationBarAppearance()
-            scrolled.configureWithDefaultBackground()
+            scrolled.configureWithOpaqueBackground()
+            scrolled.backgroundColor = UIColor(Theme.paper)
+            scrolled.shadowColor = ink.withAlphaComponent(0.08)
             let atRest = UINavigationBarAppearance()
             atRest.configureWithTransparentBackground()
             for appearance in [scrolled, atRest] {
                 appearance.titleTextAttributes = inlineAttributes
-                appearance.largeTitleTextAttributes = [.font: large]
+                appearance.largeTitleTextAttributes = [.font: large, .foregroundColor: ink]
             }
             let bar = UINavigationBar.appearance()
             bar.standardAppearance = scrolled
@@ -38,6 +41,8 @@ struct ReliveApp: App {
                 // Set explicitly: customising the navigation bar at launch makes UIKit
                 // fall back to system blue for the app-wide accent.
                 .tint(Color("AccentColor"))
+                // Paper is always light.
+                .preferredColorScheme(.light)
         }
     }
 }

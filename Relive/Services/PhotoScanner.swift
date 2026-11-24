@@ -59,7 +59,8 @@ enum PhotoScanner {
         )
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
 
-        var pooled = Set<String>()
+        // Pooled photos, and images this app saved, aren't suggested.
+        var pooled = PhotoSaver.savedIdentifiers
         for photo in trip.photos {
             if case .asset(let id) = photo.ref { pooled.insert(id) }
         }
@@ -80,8 +81,9 @@ enum PhotoScanner {
         return photos
     }
 
-    /// Loads a camera-roll photo scaled to roughly `side` pixels.
-    static func image(for localIdentifier: String, side: CGFloat) async -> UIImage? {
+    /// Loads a camera-roll photo scaled to roughly `side` pixels. `.aspectFill` covers a
+    /// `side`-square (for tiles); `.aspectFit` fits inside it, keeping the whole photo.
+    static func image(for localIdentifier: String, side: CGFloat, contentMode: PHImageContentMode = .aspectFill) async -> UIImage? {
         guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject else {
             return nil
         }
@@ -94,7 +96,7 @@ enum PhotoScanner {
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: CGSize(width: side, height: side),
-                contentMode: .aspectFill,
+                contentMode: contentMode,
                 options: options
             ) { image, _ in
                 continuation.resume(returning: image)

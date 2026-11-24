@@ -35,6 +35,7 @@ struct NewTripView: View {
                     Text("Photos taken on these dates within 50 km of any place here are suggested for the album.")
                 }
             }
+            .paperForm()
             .navigationTitle("New trip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

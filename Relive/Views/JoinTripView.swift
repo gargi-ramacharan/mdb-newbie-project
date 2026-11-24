@@ -17,8 +17,8 @@ struct JoinTripView: View {
             Form {
                 Section {
                     TextField("Invite code", text: $code)
-                        .font(Theme.display(32))
-                        .tracking(2)
+                        .font(Theme.title(32))
+                        .tracking(1.5)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                         .onChange(of: code) { notFound = false }
@@ -31,6 +31,7 @@ struct JoinTripView: View {
                     }
                 }
             }
+            .paperForm()
             .navigationTitle("Join a trip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

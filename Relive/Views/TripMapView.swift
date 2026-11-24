@@ -63,21 +63,11 @@ struct TripMapView: View {
     }
 
     private func dayChip(_ title: String, value: Int?) -> some View {
-        let isOn = day == value
-        return Button {
-            // Tapping a chip also re-frames its stops, so it doubles as "show everything again".
+        // Tapping a chip also re-frames its stops, so it doubles as "show everything again".
+        Pill(title: title, isOn: day == value, raised: true) {
             day = value
             withAnimation { position = .automatic }
-        } label: {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(isOn ? Theme.thermal : Theme.ink)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(isOn ? Theme.ink : Theme.thermal, in: Capsule())
-                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
         }
-        .buttonStyle(.plain)
     }
 }
 
@@ -88,8 +78,7 @@ private struct StopPin: View {
 
     var body: some View {
         Text("\(number)")
-            .font(Theme.display(20, relativeTo: .body))
-            .baselineOffset(-2)
+            .font(.system(size: 15, weight: .bold))
             .foregroundStyle(Theme.thermal)
             .frame(width: 30, height: 30)
             .background(Theme.ink, in: Circle())
@@ -136,7 +125,8 @@ struct StopSheet: View {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(name?.spot ?? "Unnamed stop")
-                        .font(Theme.display(34, relativeTo: .title))
+                        .font(Theme.title(30))
+                        .tracking(-0.7)
                     Text(subtitle)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -161,7 +151,7 @@ struct StopSheet: View {
             }
             .padding(.top, 24)
         }
-        .sheet(item: $viewing) { PhotoViewer(photo: $0, trip: trip) }
+        .sheet(item: $viewing) { PhotoViewer(photos: shown, startingAt: $0, trip: trip) }
     }
 
     private func ownerChip(_ title: String, count: Int, member: Member?) -> some View {

@@ -100,5 +100,31 @@ check(shared.allSatisfy { t in StopClusterer.stops(from: t.photos).allSatisfy { 
       "every shared stop has a seeded name")
 check(Set(shared.flatMap { $0.photos.map(\.id) }).isDisjoint(with: trip.photos.map(\.id)), "shared photo ids don't clash with the demo trip")
 
+print("Members")
+var group = SeedData.demoTrip(me: me)
+check(group.isOwner(me.id), "the first member owns a trip saved without an owner")
+let friend = group.members[1]
+let friendPhotos = group.photos.filter { $0.ownerID == friend.id }
+check(!friendPhotos.isEmpty, "the friend has photos to take away")
+group.coverPhotoID = friendPhotos[0].id
+group.removeMember(me.id)
+check(group.member(me.id) != nil, "the owner can't be removed")
+group.removeMember(friend.id)
+check(group.member(friend.id) == nil, "a removed member is off the trip")
+check(group.photos.allSatisfy { $0.ownerID != friend.id }, "their photos go with them")
+check(group.coverPhotoID == nil, "a cover from their photos falls back to automatic")
+group.makeOwner(friend.id)
+check(group.isOwner(me.id), "someone off the trip can't be made owner")
+let next = group.members[1]
+group.makeOwner(next.id)
+check(group.isOwner(next.id) && !group.isOwner(me.id), "ownership can be handed to another member")
+let trip2 = try! JSONDecoder().decode(Trip.self, from: JSONEncoder().encode(group))
+check(trip2.ownerID == next.id, "the owner survives saving")
+
+print("Invite codes")
+let codes = (0..<2000).map { _ in InviteCode.random() }
+check(codes.allSatisfy { $0.count == 6 && $0.allSatisfy(InviteCode.alphabet.contains) }, "codes are six characters from the alphabet")
+check(!InviteCode.alphabet.contains(where: { "01OI".contains($0) }), "codes skip 0, O, 1 and I")
+
 print(failures == 0 ? "\nAll checks passed." : "\n\(failures) check(s) failed.")
 exit(failures == 0 ? 0 : 1)

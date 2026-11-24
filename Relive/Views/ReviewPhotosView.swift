@@ -85,7 +85,8 @@ struct ReviewPhotosView: View {
         if !photos.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text("\(title) (\(photos.count))")
-                    .font(Theme.display(26, relativeTo: .title2))
+                    .font(Theme.title(24))
+                    .tracking(-0.5)
                     .padding(.horizontal)
                 Text(detail)
                     .font(.footnote)

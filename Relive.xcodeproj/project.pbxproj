@@ -181,7 +181,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Re:live";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Re:live saves your trip receipt to your photo library when you choose Save Image.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Re:live saves trip photos and receipts to your photo library when you tap Save.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Re:live looks through your photo library for photos taken during your trip's dates and places. Nothing is added to a trip until you review it.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -210,7 +210,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Re:live";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Re:live saves your trip receipt to your photo library when you choose Save Image.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Re:live saves trip photos and receipts to your photo library when you tap Save.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Re:live looks through your photo library for photos taken during your trip's dates and places. Nothing is added to a trip until you review it.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

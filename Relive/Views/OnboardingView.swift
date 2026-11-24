@@ -9,9 +9,7 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(AppInfo.name)
-                    .font(Theme.display(104, relativeTo: .largeTitle))
-                    .foregroundStyle(Theme.thermal)
+                Wordmark(size: 88, color: Theme.thermal)
                 Text("Everyone's trip photos in one album, on one map, on one receipt.")
                     .font(.title3)
                     .foregroundStyle(Theme.thermal.opacity(0.85))
@@ -22,12 +20,13 @@ struct OnboardingView: View {
 
             Spacer(minLength: 24)
 
-            // The form sits on a slip of receipt paper feeding up from the bottom edge.
+            // The form sits on a white card rising from the bottom edge.
             VStack(alignment: .leading, spacing: 10) {
                 Text("Your name")
                     .font(.subheadline.weight(.semibold))
                 TextField("", text: $name, prompt: Text("First and last").foregroundStyle(Theme.ink.opacity(0.35)))
-                    .font(Theme.display(34))
+                    .font(Theme.title(30))
+                    .tracking(-0.6)
                     .textContentType(.name)
                     .textInputAutocapitalization(.words)
                     .submitLabel(.go)
@@ -42,7 +41,7 @@ struct OnboardingView: View {
                 } label: {
                     Text("Start")
                         .font(.headline)
-                        .foregroundStyle(Theme.thermal)
+                        .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                         .background(Theme.ink, in: Capsule())
@@ -57,7 +56,7 @@ struct OnboardingView: View {
             .padding(.top, 34)
             .padding(.bottom, 20)
             .background {
-                TornEdge(bottom: false)
+                UnevenRoundedRectangle(topLeadingRadius: 32, topTrailingRadius: 32, style: .continuous)
                     .fill(Theme.thermal)
                     .ignoresSafeArea(edges: .bottom)
             }

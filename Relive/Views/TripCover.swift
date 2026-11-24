@@ -33,6 +33,12 @@ extension Trip {
         return busiest.prefix(3).map(\.coordinate) + places.map(\.coordinate)
     }
 
+    /// The album photo picked as the cover, if it is still in the album.
+    var chosenCover: TripPhoto? {
+        guard let coverPhotoID else { return nil }
+        return photos.first { $0.id == coverPhotoID }
+    }
+
     /// The first real camera-roll photo in the album, if there is one.
     var coverAssetID: String? {
         for photo in photos {
@@ -42,8 +48,9 @@ extension Trip {
     }
 }
 
-/// A trip's cover: one of its own photos when it has real ones, otherwise an aerial view of where it went.
-/// Fills whatever frame it is given; the caller clips.
+/// A trip's cover: a photo the owner uploaded, or the album photo they picked, or one of
+/// its own photos when it has real ones, otherwise an aerial view of where it went. Fills
+/// whatever frame it is given; the caller clips.
 struct TripCover: View {
     let trip: Trip
     @State private var image: UIImage?
@@ -51,7 +58,18 @@ struct TripCover: View {
     var body: some View {
         Theme.ink
             .overlay {
-                if let id = trip.coverAssetID {
+                if let file = trip.coverImageFile, let uploaded = CoverImages.load(file) {
+                    Image(uiImage: uploaded)
+                        .resizable()
+                        .scaledToFill()
+                } else if let chosen = trip.chosenCover {
+                    switch chosen.ref {
+                    case .asset(let id):
+                        AssetImage(localIdentifier: id, side: 1000)
+                    case .placeholder(let symbol, _):
+                        PlaceholderPhoto(symbol: symbol, paper: trip.paper(for: chosen))
+                    }
+                } else if let id = trip.coverAssetID {
                     AssetImage(localIdentifier: id, side: 1000)
                 } else if let image {
                     Image(uiImage: image)
@@ -60,8 +78,9 @@ struct TripCover: View {
                         .transition(.opacity)
                 }
             }
-            .task(id: trip.id) {
-                guard trip.coverAssetID == nil else { return }
+            // Re-run when the picked cover changes, so clearing it brings the aerial view back.
+            .task(id: "\(trip.id)-\(trip.coverPhotoID?.uuidString ?? "auto")-\(trip.coverImageFile ?? "")") {
+                guard trip.coverImageFile == nil, trip.chosenCover == nil, trip.coverAssetID == nil else { return }
                 guard let spot = trip.coverSpots.first else { return }
                 let found = await PlaceImagery.image(at: spot, size: CGSize(width: 900, height: 1100))
                 withAnimation(.easeOut(duration: 0.5)) { image = found }
