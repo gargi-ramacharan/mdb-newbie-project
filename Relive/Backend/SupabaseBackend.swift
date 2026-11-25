@@ -220,6 +220,7 @@ actor SupabaseBackend: TripBackend {
     func removeMember(_ userID: UUID, tripID: UUID) async throws {
         _ = try await send("POST", "/rest/v1/rpc/remove_member",
                            body: try Wire.encoder.encode(Wire.TripMemberArgs(p_trip: tripID, p_user: userID)))
+        requestStorageCleanup()
     }
 
     func transferTrip(_ tripID: UUID, to userID: UUID) async throws {
@@ -230,11 +231,19 @@ actor SupabaseBackend: TripBackend {
     func leaveTrip(_ tripID: UUID) async throws {
         _ = try await send("POST", "/rest/v1/rpc/leave_trip",
                            body: try Wire.encoder.encode(Wire.TripArg(p_trip: tripID)))
+        requestStorageCleanup()
     }
 
     func deleteTrip(_ tripID: UUID) async throws {
         _ = try await send("POST", "/rest/v1/rpc/delete_trip",
                            body: try Wire.encoder.encode(Wire.TripArg(p_trip: tripID)))
+        requestStorageCleanup()
+    }
+
+    /// Asks the server to delete the photo files that leaving, removing or deleting left behind.
+    /// Fire and forget: the server also does this every 10 minutes, so a miss only delays it.
+    private nonisolated func requestStorageCleanup() {
+        Task { _ = try? await self.send("POST", "/functions/v1/storage-cleanup", body: Data("{}".utf8)) }
     }
 
     func deletePhoto(_ photo: TripPhoto, tripID: UUID) async throws {
