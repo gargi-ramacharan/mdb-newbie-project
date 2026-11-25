@@ -246,7 +246,9 @@ Stub.respond = { request in
 let signedIn = try await backend.signIn(name: "Ada Lovelace")
 check(signedIn.id == userID && signedIn.name == "Ada Lovelace", "sign-in creates an anonymous account and returns you")
 check(Stub.requests.map(\.request.url!.path) == ["/auth/v1/signup", "/rest/v1/profiles"], "sign-in = sign up, then save the profile")
-check(Stub.requests[0].request.value(forHTTPHeaderField: "Authorization") == "Bearer anon-key", "sign-up is sent with the anon key")
+check(Stub.requests[0].request.value(forHTTPHeaderField: "apikey") == "anon-key"
+      && Stub.requests[0].request.value(forHTTPHeaderField: "Authorization") == nil,
+      "sign-up is sent with the anon key as apikey only")
 check(Stub.requests[1].request.value(forHTTPHeaderField: "Authorization") == "Bearer t1"
       && Stub.requests[1].request.value(forHTTPHeaderField: "apikey") == "anon-key", "later calls carry your token")
 check(storage.session?.userID == userID, "the session is saved for next launch")
@@ -370,7 +372,8 @@ Stub.respond = { request in
 let switched = try await switching.signInWithApple(idToken: "apple-jwt", nonce: "n", name: nil)
 check(switched.id == appleID && switchStorage.session?.userID == appleID, "an Apple ID with its own account signs into that account")
 check(Stub.requests.filter { $0.request.url!.path == "/auth/v1/token" }.count == 2
-      && Stub.requests[1].request.value(forHTTPHeaderField: "Authorization") == "Bearer anon-key",
+      && Stub.requests[1].request.value(forHTTPHeaderField: "apikey") == "anon-key"
+      && Stub.requests[1].request.value(forHTTPHeaderField: "Authorization") == nil,
       "after the refused link, a plain Apple sign-in goes with the anon key")
 
 // Brand new: no session, no profile yet; the name Apple shared is saved.

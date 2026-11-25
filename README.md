@@ -1,6 +1,6 @@
 # Re:live
 
-Everyone's trip photos in one album, on one map, on one receipt. SwiftUI, iOS 17+.
+Everyone's trip photos in one album, on one map. SwiftUI, iOS 17+.
 
 ## Run it
 
@@ -46,13 +46,35 @@ One person sets up the project, everyone else just pulls the repo:
 1. Create a project at supabase.com. In **Authentication > Providers**, turn on **Anonymous sign-ins**
    (for "Continue without an account") and **Apple** (below). In **Authentication > Settings**, turn on
    **Allow manual linking**, so an account that started anonymous keeps its trips when it signs in with Apple.
-2. In the **SQL Editor**, run `supabase/migrations/0001_init.sql`, then `0002_owners_covers_members.sql`.
+2. In the **SQL Editor**, run `supabase/migrations/0001_init.sql`, then `0002_owners_covers_members.sql`
+   (and `0003_storage_cleanup.sql` once step 4's secret is saved).
    They create the tables, the `create_trip` / `join_trip` functions, the owner and member functions
    (`update_trip`, `remove_member`, `transfer_trip`, `leave_trip`, `delete_trip`), the private
    `trip-photos` bucket, and the row-level security that limits every trip's photos to its members.
 3. Copy **Project URL** and the **anon public key** (Settings > API) into `SupabaseURL` and
    `SupabaseAnonKey` in `Info.plist`. The anon key is meant to ship inside the app; the policies
    in step 2 are what protect the data.
+4. Set up photo cleanup (below), so photo files are deleted when someone leaves a trip.
+
+### Photo cleanup
+
+Leaving a trip, removing someone or deleting a trip takes the photos out of the album straight
+away, but the files themselves can only be deleted through the Storage API with the service key.
+`0003_storage_cleanup.sql` makes each of those actions queue the folder to clean, and the
+`storage-cleanup` Edge Function deletes the files. The app calls it right after each action, and
+pg_cron calls it every 10 minutes in case that call never arrives. It only deletes files that no
+photo or cover uses any more, so someone who rejoins keeps their new photos.
+
+1. In the **SQL Editor**, save the project URL for the schedule (once):
+   `select vault.create_secret('https://<project ref>.supabase.co', 'project_url');`
+2. Run `supabase/migrations/0003_storage_cleanup.sql`. It also queues any files already left
+   behind, so the first run clears them.
+3. Deploy the function (it needs no caller identity, since it can only delete files that are
+   already garbage):
+   `npx supabase functions deploy storage-cleanup --no-verify-jwt --project-ref <project ref>`
+
+To check it: **Integrations > Cron** shows each run, and `select * from public.storage_cleanup;`
+lists folders still waiting.
 
 With that on:
 

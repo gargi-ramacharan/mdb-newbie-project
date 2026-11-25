@@ -3,3 +3,6 @@ xcuserdata/
 DerivedData/
 build/
 *.xcuserstate
+
+# Supabase CLI local state
+supabase/.temp/

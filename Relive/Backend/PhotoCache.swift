@@ -22,4 +22,9 @@ enum PhotoCache {
     static func write(_ data: Data, for path: String) {
         try? data.write(to: file(for: path), options: .atomic)
     }
+
+    /// Clears every downloaded photo, on sign-out.
+    static func deleteAll() {
+        try? FileManager.default.removeItem(at: folder)
+    }
 }

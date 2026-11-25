@@ -5,9 +5,9 @@
 	<!-- Supabase project. Leave both blank to run without a server (everything stays on the phone).
 	     The anon key is meant to ship in the app; row-level security is what protects the data. -->
 	<key>SupabaseURL</key>
-	<string></string>
+	<string>https://pqxhxcrnitsmkztonpxl.supabase.co</string>
 	<key>SupabaseAnonKey</key>
-	<string></string>
+	<string>sb_publishable_LSxeEZXm-kw2JgNKl4DmIQ_xRDFGW3K</string>
 	<!-- Domain for https invite links (the INVITE_LINK_HOST build setting). Blank means
 	     invites use relive:// links, which only work when the app is installed. -->
 	<key>InviteLinkHost</key>

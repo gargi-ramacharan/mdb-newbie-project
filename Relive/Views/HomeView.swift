@@ -16,6 +16,7 @@ struct HomeView: View {
     @State private var focused: UUID?
     /// The trip whose context menu asked to delete or leave it, waiting for confirmation.
     @State private var removing: Trip?
+    @State private var confirmingSignOut = false
 
     struct JoinPrompt: Identifiable {
         let id = UUID()
@@ -126,11 +127,19 @@ struct HomeView: View {
                             store.resetDemo()
                         }
                     }
+                    Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                        confirmingSignOut = true
+                    }
                 }
             } label: {
                 CircleIcon(systemName: "person.fill")
             }
             .accessibilityLabel("Profile")
+            .confirmationDialog("Sign out?", isPresented: $confirmingSignOut, titleVisibility: .visible) {
+                Button("Sign out", role: .destructive) { Task { await store.signOut() } }
+            } message: {
+                Text(signOutWarning)
+            }
             Spacer()
             Wordmark(size: 30, color: .white)
                 .shadow(color: .black.opacity(0.5), radius: 6)
@@ -228,6 +237,17 @@ struct HomeView: View {
         .hardShadow(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.trailing, 4)
         .padding(.bottom, 4)
+    }
+
+    /// What signing out costs: with Apple you can sign back in; otherwise the account is gone.
+    private var signOutWarning: String {
+        if !store.hasBackend {
+            return "Your trips are only on this phone, so signing out deletes them."
+        }
+        if store.isSignedInWithApple {
+            return "Your trips come back when you sign in with Apple again. Photos that haven't uploaded yet will be lost."
+        }
+        return "You haven't signed in with Apple, so you won't be able to get back into this account or its trips."
     }
 
     /// Signs this account in with Apple from the profile menu.
