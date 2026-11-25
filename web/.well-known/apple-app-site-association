@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.relive.app"],
+        "components": [
+          { "/": "/join/*", "comment": "Trip invites open in the app" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["TEAMID.com.relive.app"]
+  }
+}

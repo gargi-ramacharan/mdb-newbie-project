@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// The receipt recap, printing out of a slot onto an ink-violet counter, with a
-/// button to share it as an image.
+/// The receipt recap, printing out of a slot, with buttons to save it to Photos or share it.
 struct RecapView: View {
     let trip: Trip
     let stops: [Stop]
     @Environment(TripStore.self) private var store
     @State private var shareImage: UIImage?
+    @State private var saved = false
+    @State private var saveError: String?
 
     private let receiptWidth: CGFloat = 330
 
@@ -29,22 +30,47 @@ struct RecapView: View {
                     if !trip.hasEnded() {
                         Text("The trip isn't over, so this is a running total.")
                             .font(.footnote)
-                            .foregroundStyle(Theme.thermal.opacity(0.8))
+                            .foregroundStyle(Theme.ink.opacity(0.6))
                     }
 
                     if let shareImage {
-                        ShareLink(
-                            item: Image(uiImage: shareImage),
-                            preview: SharePreview("\(trip.name) receipt", image: Image(uiImage: shareImage))
-                        ) {
-                            Label("Share receipt", systemImage: "square.and.arrow.up")
-                                .font(.headline)
-                                .foregroundStyle(Theme.ink)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(Theme.canary, in: Capsule())
+                        HStack(spacing: 10) {
+                            Button {
+                                Task {
+                                    do {
+                                        try await PhotoSaver.save(shareImage, key: receiptKey(stats))
+                                        saved = true
+                                    } catch {
+                                        saveError = error.localizedDescription
+                                    }
+                                }
+                            } label: {
+                                Label(saved ? "In your library" : "Save", systemImage: saved ? "checkmark" : "arrow.down.to.line")
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(Theme.ink, in: Capsule())
+                            }
+                            .disabled(saved)
+                            ShareLink(
+                                item: ReceiptImage(image: shareImage, name: trip.name),
+                                preview: SharePreview("\(trip.name) receipt", image: Image(uiImage: shareImage))
+                            ) {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                                    .font(.headline)
+                                    .foregroundStyle(Theme.ink)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(.white, in: Capsule())
+                            }
                         }
-                        .padding(.horizontal, 36)
+                        .padding(.horizontal, 28)
+                        .alert("Couldn't save the receipt", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+                            Button("OK") { saveError = nil }
+                        } message: {
+                            Text(saveError ?? "")
+                        }
                     }
                 }
                 .padding(.bottom, 28)
@@ -52,23 +78,36 @@ struct RecapView: View {
             }
             // The slot the paper feeds out of.
             .safeAreaInset(edge: .top, spacing: 0) {
-                Rectangle()
-                    .fill(Color(red: 0.07, green: 0.065, blue: 0.22))
+                Capsule()
+                    .fill(Theme.ink)
                     .frame(height: 7)
+                    .padding(.horizontal, 24)
             }
-            .background(Theme.ink)
+            .background(Theme.card)
             .task(id: stats) {
-                // Draw the card off screen at 3x, torn at both ends, for sharing.
+                // The same receipt saved before (and still in the library) isn't saved again.
+                saved = PhotoSaver.isSaved(key: receiptKey(stats))
+                // Draw the card off screen at 3x, torn at both ends, on a soft grey card with
+                // room around it, so it reads as a receipt in a photo library or a chat.
                 let renderer = ImageRenderer(
                     content: ReceiptCard(trip: trip, stats: stats, tornTop: true)
                         .frame(width: receiptWidth)
-                        .padding(28)
-                        .background(Theme.ink)
+                        .padding(.horizontal, 36)
+                        .padding(.vertical, 48)
+                        .background(Theme.card)
+                        .environment(\.colorScheme, .light)
                 )
                 renderer.scale = 3
+                renderer.isOpaque = true
                 shareImage = renderer.uiImage
             }
         }
+    }
+
+    /// Identifies this version of the receipt: a new photo or a renamed trip makes a new one.
+    private func receiptKey(_ stats: TripStats) -> String {
+        let people = stats.perMember.map { "\($0.member.id):\($0.count)" }.joined(separator: ",")
+        return "receipt:\(trip.id):\(trip.name):\(stats.photoCount):\(stats.stopCount):\(stats.dayCount):\(people)"
     }
 }
 
@@ -82,9 +121,8 @@ struct ReceiptCard: View {
 
     var body: some View {
         VStack(spacing: 9) {
-            Text(AppInfo.name)
-                .font(Theme.display(54, relativeTo: .largeTitle))
-                .padding(.bottom, -8)
+            Wordmark(size: 46)
+                .padding(.bottom, -4)
             Text("TRIP RECEIPT")
                 .font(Theme.mono(11))
                 .tracking(4)
@@ -221,5 +259,19 @@ private struct BarcodeShape: Shape {
             isBar.toggle()
         }
         return path
+    }
+}
+
+/// The receipt as a PNG file for the share sheet, with a readable file name. Sharing a
+/// SwiftUI `Image` directly lets the receiving app pick a format and size.
+struct ReceiptImage: Transferable {
+    let image: UIImage
+    let name: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: .png) { receipt in
+            receipt.image.pngData() ?? Data()
+        }
+        .suggestedFileName { "\($0.name) receipt.png" }
     }
 }

@@ -59,16 +59,20 @@ enum PhotoScanner {
         )
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
 
-        var pooled = Set<String>()
+        // Pooled photos, and images this app saved, aren't suggested.
+        var pooled = PhotoSaver.savedIdentifiers
         for photo in trip.photos {
             if case .asset(let id) = photo.ref { pooled.insert(id) }
         }
+
+        let uploaded = AlreadyUploaded(trip: trip, owner: ownerID)
 
         var photos: [TripPhoto] = []
         PHAsset.fetchAssets(with: .image, options: options).enumerateObjects { asset, _, _ in
             guard !pooled.contains(asset.localIdentifier),
                   !asset.mediaSubtypes.contains(.photoScreenshot),
-                  let takenAt = asset.creationDate else { return }
+                  let takenAt = asset.creationDate,
+                  !uploaded.contains(takenAt) else { return }
             photos.append(TripPhoto(
                 ownerID: ownerID,
                 takenAt: takenAt,
@@ -80,8 +84,33 @@ enum PhotoScanner {
         return photos
     }
 
-    /// Loads a camera-roll photo scaled to roughly `side` pixels.
-    static func image(for localIdentifier: String, side: CGFloat) async -> UIImage? {
+    /// A JPEG of a camera-roll photo whose long edge is at most `maxSide` pixels. This is what
+    /// gets uploaded, never the original. `nil` if the photo is gone or can't be loaded.
+    static func jpegData(for localIdentifier: String, maxSide: CGFloat, quality: CGFloat = 0.8) async -> Data? {
+        guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject else {
+            return nil
+        }
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.resizeMode = .exact
+        // Photos kept in iCloud are downloaded for the upload.
+        options.isNetworkAccessAllowed = true
+        let image: UIImage? = await withCheckedContinuation { continuation in
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: maxSide, height: maxSide),
+                contentMode: .aspectFit,
+                options: options
+            ) { image, _ in
+                continuation.resume(returning: image)
+            }
+        }
+        return image?.jpegData(compressionQuality: quality)
+    }
+
+    /// Loads a camera-roll photo scaled to roughly `side` pixels. `.aspectFill` covers a
+    /// `side`-square (for tiles); `.aspectFit` fits inside it, keeping the whole photo.
+    static func image(for localIdentifier: String, side: CGFloat, contentMode: PHImageContentMode = .aspectFill) async -> UIImage? {
         guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject else {
             return nil
         }
@@ -94,7 +123,7 @@ enum PhotoScanner {
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: CGSize(width: side, height: side),
-                contentMode: .aspectFill,
+                contentMode: contentMode,
                 options: options
             ) { image, _ in
                 continuation.resume(returning: image)

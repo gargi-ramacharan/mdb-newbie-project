@@ -14,6 +14,8 @@ struct HomeView: View {
     @State private var position: MapCameraPosition = .camera(wholeEarth)
     /// The trip whose card is in front and whose place the globe is showing.
     @State private var focused: UUID?
+    /// The trip whose context menu asked to delete or leave it, waiting for confirmation.
+    @State private var removing: Trip?
 
     struct JoinPrompt: Identifiable {
         let id = UUID()
@@ -39,49 +41,15 @@ struct HomeView: View {
     /// Far enough out that the whole globe fits, so pins on other continents stay in view.
     private static let globeDistance: CLLocationDistance = 40_000_000
 
-    /// Poster type for the home screen: Futura Condensed ExtraBold.
-    static func poster(_ size: CGFloat, relativeTo style: Font.TextStyle = .title) -> Font {
-        .custom("Futura-CondensedExtraBold", size: size, relativeTo: style)
-    }
-
     var body: some View {
         NavigationStack(path: $path) {
             globe
                 .safeAreaInset(edge: .bottom, spacing: 0) { cards }
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.hidden, for: .navigationBar)
+                // A custom top bar instead of the navigation bar, so its buttons are solid
+                // white and easy to spot over the dark globe.
+                .safeAreaInset(edge: .top, spacing: 0) { topBar }
+                .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: UUID.self) { TripDetailView(tripID: $0) }
-                .toolbar {
-                    ToolbarItem(placement: .principal) {
-                        Text(AppInfo.name)
-                            .font(Self.poster(30))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.5), radius: 6)
-                    }
-                    ToolbarItem(placement: .topBarLeading) {
-                        Menu {
-                            if let me = store.me {
-                                Section("Signed in as \(me.name)") {
-                                    Button("Reset sample trip", systemImage: "arrow.counterclockwise") {
-                                        store.resetDemo()
-                                    }
-                                }
-                            }
-                        } label: {
-                            Label("Profile", systemImage: "person.crop.circle")
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button("New trip", systemImage: "plus") { showingNewTrip = true }
-                            Button("Join with a code", systemImage: "person.badge.plus") {
-                                joinPrompt = JoinPrompt(code: "")
-                            }
-                        } label: {
-                            Label("Add trip", systemImage: "plus")
-                        }
-                    }
-                }
                 .sheet(isPresented: $showingNewTrip) {
                     NewTripView { trip in show(trip) }
                 }
@@ -143,6 +111,44 @@ struct HomeView: View {
         .mapStyle(.hybrid(elevation: .realistic))
     }
 
+    private var topBar: some View {
+        HStack {
+            Menu {
+                if let me = store.me {
+                    Section(store.isSignedInWithApple ? "Signed in with Apple as \(me.name)" : "Signed in as \(me.name)") {
+                        if store.hasBackend && !store.isSignedInWithApple {
+                            // Keeps this account's trips and makes it work on your other devices.
+                            Button("Sign in with Apple", systemImage: "apple.logo") {
+                                Task { await linkApple() }
+                            }
+                        }
+                        Button("Reset sample trip", systemImage: "arrow.counterclockwise") {
+                            store.resetDemo()
+                        }
+                    }
+                }
+            } label: {
+                CircleIcon(systemName: "person.fill")
+            }
+            .accessibilityLabel("Profile")
+            Spacer()
+            Wordmark(size: 30, color: .white)
+                .shadow(color: .black.opacity(0.5), radius: 6)
+            Spacer()
+            Menu {
+                Button("New trip", systemImage: "plus") { showingNewTrip = true }
+                Button("Join with a code", systemImage: "person.badge.plus") {
+                    joinPrompt = JoinPrompt(code: "")
+                }
+            } label: {
+                CircleIcon(systemName: "plus")
+            }
+            .accessibilityLabel("Add trip")
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 6)
+    }
+
     private var cards: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 12) {
@@ -160,9 +166,13 @@ struct HomeView: View {
                     }
                     .buttonStyle(PressScale())
                     .contextMenu {
-                        if sharer == nil {
-                            Button("Delete trip", systemImage: "trash", role: .destructive) {
-                                store.deleteTrip(trip.id)
+                        if store.isOwner(of: trip) {
+                            Button("Delete for everyone", systemImage: "trash", role: .destructive) {
+                                removing = trip
+                            }
+                        } else {
+                            Button("Leave trip", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                                removing = trip
                             }
                         }
                     }
@@ -171,39 +181,66 @@ struct HomeView: View {
             }
             .scrollTargetLayout()
         }
+        .confirmationDialog(
+            removing.map { store.isOwner(of: $0) ? "Delete \($0.name) for everyone?" : "Leave \($0.name)?" } ?? "",
+            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+            titleVisibility: .visible,
+            presenting: removing
+        ) { trip in
+            if store.isOwner(of: trip) {
+                Button("Delete for everyone", role: .destructive) { Task { await store.deleteTrip(trip.id) } }
+            } else {
+                Button("Leave trip", role: .destructive) { Task { await store.leaveTrip(trip.id) } }
+            }
+        } message: { trip in
+            Text(store.isOwner(of: trip)
+                 ? "Every member loses the trip and its shared album. This can't be undone."
+                 : "It comes off your phone, along with any photos you added.")
+        }
         .scrollTargetBehavior(.viewAligned)
         .scrollPosition(id: $focused)
         .contentMargins(.horizontal, 26, for: .scrollContent)
         .scrollIndicators(.hidden)
-        .frame(height: 132)
+        .frame(height: 168)
         .padding(.bottom, 10)
     }
 
     private var emptyCard: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("No trips of your own yet")
-                .font(Self.poster(26, relativeTo: .title2))
+                .font(Theme.title(24))
+                .tracking(-0.5)
             Text("Start one, or join a friend's with their code.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             HStack(spacing: 10) {
-                Button("New trip") { showingNewTrip = true }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.canary)
-                    .foregroundStyle(Theme.ink)
-                Button("Join with a code") { joinPrompt = JoinPrompt(code: "") }
-                    .buttonStyle(.bordered)
-                    .tint(.white)
+                Pill(title: "New trip", isOn: true) { showingNewTrip = true }
+                Pill(title: "Join with a code", isOn: false) { joinPrompt = JoinPrompt(code: "") }
             }
-            .fontWeight(.semibold)
             .padding(.top, 6)
         }
+        .foregroundStyle(Theme.ink)
         .padding(.horizontal, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .environment(\.colorScheme, .dark)
+        .background(Theme.thermal, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.ink, lineWidth: 2))
+        .hardShadow(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.trailing, 4)
+        .padding(.bottom, 4)
+    }
+
+    /// Signs this account in with Apple from the profile menu.
+    private func linkApple() async {
+        do {
+            let credential = try await AppleSignIn.request()
+            try await store.signInWithApple(idToken: credential.idToken, nonce: credential.nonce, name: credential.name)
+        } catch {
+            guard !AppleSignIn.wasCancelled(error) else { return }
+            store.actionProblem = error is URLError
+                ? "Couldn't reach the server. Check your connection and try again."
+                : error.localizedDescription
+        }
     }
 
     /// Opens a trip that was just created or joined, and turns the globe to it for the way back.
@@ -223,6 +260,21 @@ struct HomeView: View {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 2.4)) {
             position = .camera(camera)
         }
+    }
+}
+
+/// A round button outlined in white with a white icon, readable on the dark globe.
+private struct CircleIcon: View {
+    let systemName: String
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 46, height: 46)
+            .background(.black.opacity(0.25), in: Circle())
+            .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
+            .contentShape(Circle())
     }
 }
 
@@ -267,52 +319,82 @@ private struct PinShape: Shape {
     }
 }
 
+/// A trip as a ticket: its cover on the stub, torn off along a dotted perforation.
 private struct TripCard: View {
     let trip: Trip
     /// Set when this is someone else's trip that they shared with you.
     var sharer: Member?
 
+    private static let stub: CGFloat = 112
+
     var body: some View {
-        HStack(spacing: 14) {
+        let ticket = TicketShape(notchX: Self.stub)
+        HStack(spacing: 0) {
             Color.black
-                .frame(width: 104, height: 104)
+                .frame(width: Self.stub)
+                .frame(maxHeight: .infinity)
                 .overlay { TripCover(trip: trip) }
                 .overlay(alignment: .bottomLeading) {
                     HStack(spacing: -8) {
                         ForEach(trip.members.prefix(4)) { Avatar(member: $0, size: 24) }
                     }
-                    .padding(6)
+                    .padding(8)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipped()
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
+                // The ticket's "class" line: whose trip it is.
+                Text(sharer.map { "Shared by \($0.firstName)" } ?? "Your trip")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(sharer?.color ?? Theme.canary, in: Capsule())
+                Spacer(minLength: 0)
+                // Same type as the trip screen's banner. Long names shrink rather than being cut off.
                 Text(trip.name)
-                    .font(HomeView.poster(26, relativeTo: .title2))
+                    .font(Theme.title(30))
+                    .tracking(-0.8)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-                Group {
-                    Text(trip.dateRangeText)
-                        .foregroundStyle(.secondary)
-                    if let sharer {
-                        Text("Shared by \(sharer.firstName)")
-                            .fontWeight(.semibold)
-                            .foregroundStyle(sharer.color)
-                    } else {
-                        Text(trip.placesText)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .font(.footnote)
-                .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                Text(trip.placesText)
+                    .font(Theme.title(17))
+                    .tracking(-0.3)
+                    .lineLimit(1)
+                    .opacity(0.5)
+                Text(trip.dateRangeText)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .opacity(0.75)
+                    .padding(.top, 2)
             }
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.bold))
-                .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.ink)
+            .padding(.leading, 16)
+            .padding(.trailing, 12)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .overlay(alignment: .leading) {
+                // The perforation between stub and ticket.
+                Line()
+                    .stroke(Theme.ink, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [0.1, 6]))
+                    .frame(width: 2)
+                    .padding(.vertical, 12)
+            }
         }
-        .padding(14)
-        .frame(maxHeight: .infinity)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .environment(\.colorScheme, .dark)
+        .background(Theme.thermal)
+        .clipShape(ticket)
+        .overlay(ticket.stroke(Theme.ink, lineWidth: 2))
+        .hardShadow(ticket)
+        .padding(.trailing, 4)
+        .padding(.bottom, 4)
+    }
+}
+
+/// A vertical line down the middle of its frame.
+private struct Line: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        return path
     }
 }

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Join a trip on re:live</title>
+  <meta name="description" content="You're invited to share trip photos on re:live.">
+  <meta property="og:title" content="You're invited to a trip on re:live">
+  <meta property="og:description" content="Everyone's trip photos in one album, on one map, on one receipt.">
+  <!-- Replace with your App Store or TestFlight link once you have one. -->
+  <meta name="relive-app-link" content="https://testflight.apple.com/join/REPLACE_ME">
+  <style>
+    :root {
+      --ink: #1f1c18;
+      --paper: #ffffff;
+      --card: #f2f2f1;
+      --muted: rgba(31, 28, 24, 0.6);
+      --tomato: #e2412b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink: #f5f3ef; --paper: #141311; --card: #23211e; --muted: rgba(245, 243, 239, 0.6); }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+    main { width: 100%; max-width: 420px; }
+    .wordmark {
+      font-family: Futura, "Futura PT", "Century Gothic", sans-serif;
+      font-weight: 700;
+      font-size: 40px;
+      letter-spacing: -1.5px;
+      margin: 0 0 40px;
+    }
+    .wordmark span { color: var(--tomato); }
+    h1 { font-size: 40px; line-height: 1.05; letter-spacing: -1px; font-weight: 600; margin: 0 0 12px; }
+    p { font-size: 17px; line-height: 1.45; color: var(--muted); margin: 0 0 28px; }
+    .code {
+      background: var(--card);
+      border-radius: 24px;
+      padding: 20px 22px;
+      margin-bottom: 24px;
+    }
+    .code small { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+    .code strong { display: block; font-size: 40px; letter-spacing: 6px; font-weight: 600; margin-top: 4px; }
+    .button {
+      display: block;
+      text-align: center;
+      text-decoration: none;
+      font-size: 17px;
+      font-weight: 600;
+      padding: 17px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+    .primary { background: var(--ink); color: var(--paper); }
+    .secondary { background: var(--card); color: var(--ink); }
+    .note { font-size: 14px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="wordmark">re<span>:</span>live</div>
+    <h1>You're invited to a trip</h1>
+    <p>Everyone's trip photos in one album, on one map, on one receipt.</p>
+
+    <div class="code">
+      <small>Invite code</small>
+      <strong id="code">——————</strong>
+    </div>
+
+    <a class="button primary" id="get" href="#">Get re:live</a>
+    <a class="button secondary" id="open" href="#">I have the app — open the trip</a>
+
+    <p class="note">
+      After installing, come back to this page and tap <b>Open the trip</b>,
+      or enter the code in the app under <b>+ › Join with a code</b>.
+    </p>
+  </main>
+  <script>
+    // /join/ABC123 → ABC123. Only letters and digits, so nothing odd ends up in a link.
+    var raw = location.pathname.split("/").filter(Boolean)[1] || "";
+    var code = raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+    if (code) {
+      document.getElementById("code").textContent = code;
+      document.title = "Join trip " + code + " on re:live";
+    }
+    // With the app installed, iOS opens /join links in the app before this page loads.
+    // If someone lands here anyway (opened in Safari directly), this button hands over.
+    document.getElementById("open").href = "relive://join/" + encodeURIComponent(code);
+    var appLink = document.querySelector('meta[name="relive-app-link"]').content;
+    document.getElementById("get").href = appLink;
+  </script>
+</body>
+</html>
