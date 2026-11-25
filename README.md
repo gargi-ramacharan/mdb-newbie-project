@@ -144,7 +144,8 @@ print. The logo is "re:live" in Futura Bold with a tomato colon.
 
 The home screen (`Relive/Views/HomeView.swift`) is a satellite globe: it opens on the whole
 earth, turns to the trip in front, and turns from trip to trip as you swipe their cards. Its
-day and night follow the real time of day. Tap a pin to bring its trip to the front, and tap
+day and night follow the real time of day. Pinch to zoom in: place names and roads appear,
+then businesses at street level (Apple Maps' hybrid style). Tap a pin to bring its trip to the front, and tap
 the front pin (or its card) to open it. Your own trips are canary pins. The other pins
 are five made-up trips "shared" by other people (New York, Rio de Janeiro, Cape Town, Mumbai,
 Sydney), each with a view-only album of placeholder photos; they come from
