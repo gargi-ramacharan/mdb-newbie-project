@@ -11,6 +11,8 @@ protocol TripBackend: Sendable {
     func signInWithApple(idToken: String, nonce: String, name: String?) async throws -> Member
     /// Your identity if this phone is already signed in and has a profile; `nil` otherwise.
     func restore() async throws -> Member?
+    /// Ends this phone's session on the server (best effort) and forgets it here.
+    func signOut() async
     /// Creates the trip on the server and returns the invite code the server minted for it.
     func createTrip(_ trip: Trip) async throws -> String
     /// Joins the trip with this invite code and returns it, or `nil` if no trip has that code.

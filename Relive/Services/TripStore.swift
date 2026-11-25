@@ -485,6 +485,18 @@ final class TripStore {
         await refresh()
     }
 
+    /// Signs out and clears everything this account left on the phone (trips, covers, downloaded
+    /// photos), back to the welcome screen. Without Apple, there's no way back into the account.
+    func signOut() async {
+        await backend?.signOut()
+        CoverImages.deleteAll()
+        PhotoCache.deleteAll()
+        data = AppData()
+        syncProblem = nil
+        actionProblem = nil
+        save()
+    }
+
     /// Noon on `date`'s calendar day at the trip's destination, as a date on this phone's
     /// calendar with the same year, month and day. The reverse of `sameDay`, for date pickers.
     static func localDay(_ date: Date, from calendar: Calendar) -> Date {

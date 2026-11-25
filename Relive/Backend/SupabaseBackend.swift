@@ -79,6 +79,15 @@ actor SupabaseBackend: TripBackend {
         }
     }
 
+    func signOut() async {
+        // Revokes the refresh token so it can't be reused. If the phone is offline the server
+        // session just expires on its own; it's forgotten here either way.
+        if session != nil {
+            _ = try? await send("POST", "/auth/v1/logout", contentType: nil)
+        }
+        setSession(nil)
+    }
+
     func signIn(name: String) async throws -> Member {
         if let existing = try await restore() {
             if existing.name != name { try await saveProfile(id: existing.id, name: name) }

@@ -146,4 +146,10 @@ enum CoverImages {
         cache.removeObject(forKey: name as NSString)
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
     }
+
+    /// Clears every saved cover, on sign-out.
+    static func deleteAll() {
+        cache.removeAllObjects()
+        try? FileManager.default.removeItem(at: directory)
+    }
 }
