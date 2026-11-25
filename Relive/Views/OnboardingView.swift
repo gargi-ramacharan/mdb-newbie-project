@@ -8,6 +8,7 @@ struct OnboardingView: View {
     @State private var problem: String?
     /// The nonce for the Apple request in flight.
     @State private var nonce = AppleSignIn.makeNonce()
+    @State private var showingCredits = false
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -15,15 +16,28 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 Wordmark(size: 88, color: Theme.thermal)
-                Text("Everyone's trip photos in one album, on one map, on one receipt.")
+                Text("Everyone's trip photos in one album, on one map.")
                     .font(.title3)
                     .foregroundStyle(Theme.thermal.opacity(0.85))
+                // The postcards' licenses ask for their photographers to be named.
+                Button("Photo credits") { showingCredits = true }
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(Theme.thermal.opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 28)
-            .padding(.top, 72)
+            .padding(.top, 56)
 
+            // Postcards drift through the gap, tucked under the top of the form card.
+            // Drawn over the gap rather than laid out in it, so it never squeezes the text or form.
             Spacer(minLength: 24)
+                .overlay(alignment: .bottom) {
+                    PlaceCarousel()
+                        .frame(maxHeight: 300)
+                        .padding(.top, 12)
+                        .padding(.bottom, -36)
+                }
 
             // The form sits on a white card rising from the bottom edge.
             VStack(alignment: .leading, spacing: 10) {
@@ -72,6 +86,7 @@ struct OnboardingView: View {
             }
         }
         .background(Theme.ink.ignoresSafeArea())
+        .sheet(isPresented: $showingCredits) { PhotoCreditsView() }
     }
 
     /// Sign in with Apple: one tap, works on every device, and shares only a name.

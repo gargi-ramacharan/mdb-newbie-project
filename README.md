@@ -1,6 +1,6 @@
 # Re:live
 
-Everyone's trip photos in one album, on one map, on one receipt. SwiftUI, iOS 17+.
+Everyone's trip photos in one album, on one map. SwiftUI, iOS 17+.
 
 ## Run it
 
