@@ -302,7 +302,11 @@ actor SupabaseBackend: TripBackend {
         request.httpBody = body
         request.timeoutInterval = 60
         request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Signed-in requests carry the user's token. Before sign-in the apikey header is enough,
+        // and a new-style publishable key (sb_publishable_…) isn't a token, so it doesn't go here.
+        if token != config.anonKey {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         if let contentType, body != nil { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
 
