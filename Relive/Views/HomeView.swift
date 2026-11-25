@@ -139,7 +139,8 @@ struct HomeView: View {
                 }
             }
         }
-        .mapStyle(.imagery(elevation: .realistic))
+        // Satellite imagery with place names, roads and businesses as you zoom in.
+        .mapStyle(.hybrid(elevation: .realistic))
     }
 
     private var cards: some View {
